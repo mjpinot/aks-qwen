@@ -23,12 +23,35 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      # Allow in-flight requests to drain before pod is killed
+      terminationGracePeriodSeconds: 120
+
+      # One replica per GPU node max
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: qwen-coder
+
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Exists"
           effect: "NoSchedule"
+
       nodeSelector:
         workload: llm
+
+      # Validate GPU is accessible before starting vLLM
+      initContainers:
+        - name: cuda-init
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          command: ["nvidia-smi"]
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+
       containers:
         - name: qwen-coder
           image: vllm/vllm-openai:latest
@@ -41,6 +64,9 @@ spec:
             - "1"
             - "--max-model-len"
             - "8192"
+            - "--gpu-memory-utilization"
+            - "0.90"
+            - "--disable-log-requests"
           ports:
             - containerPort: 8000
               name: http
@@ -53,24 +79,50 @@ spec:
               nvidia.com/gpu: "1"
               memory: "16Gi"
               cpu: "2"
+          volumeMounts:
+            # vLLM needs large /dev/shm for CUDA inter-process tensor sharing
+            - name: shm
+              mountPath: /dev/shm
+            # Persist model weights to avoid re-downloading on pod restart
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 10
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "30"]   # drain in-flight requests
           env:
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-token
                   key: token
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
+            - name: VLLM_WORKER_MULTIPROC_METHOD
+              value: "spawn"
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi        # vLLM needs >> default 64Mi /dev/shm
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 20Gi
 ---
 apiVersion: v1
 kind: Service

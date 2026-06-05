@@ -240,3 +240,168 @@ vllm:num_requests_waiting
 ```
 
 These metrics provide real-time visibility into model utilization, request concurrency, and queue depth.
+
+
+
+# vLLM Performance & GPU Optimization
+
+This deployment includes several AKS, Kubernetes, and vLLM optimizations specifically designed for high-throughput LLM inference workloads running on NVIDIA GPUs.
+
+---
+
+## GPU Node Pool Optimizations
+
+The GPU node pool is configured with performance-oriented settings to improve model loading times, reduce latency, and maximize GPU utilization.
+
+| Setting | Value | Purpose |
+|----------|----------|----------|
+| `os_disk_type` | `Ephemeral` | Reduces I/O latency during model weight loading. |
+| `cpu_manager_policy` | `static` | Provides dedicated CPU allocation and prevents noisy-neighbor CPU contention. |
+| `topology_manager_policy` | `best-effort` | Improves CPU, memory, and GPU NUMA alignment. |
+| `transparent_huge_page_enabled` | `always` | Improves PyTorch and CUDA memory management performance. |
+| `kernel_shm_max` | `16Gi` | Supports CUDA IPC workloads requiring large shared memory segments. |
+| `net.core.rmem_max` | `128Mi` | Increases network receive buffers for high-throughput token streaming. |
+| `net.core.wmem_max` | `128Mi` | Increases network transmit buffers for inference traffic. |
+
+---
+
+## Pod-Level Optimizations
+
+The vLLM deployment includes Kubernetes-level tuning to improve reliability, startup behavior, and GPU utilization.
+
+| Setting | Purpose |
+|----------|----------|
+| `terminationGracePeriodSeconds: 120` | Allows active requests to complete before pod termination. |
+| `preStop: sleep 30` | Provides additional drain time during KEDA scale-down events. |
+| `topologySpreadConstraints` | Ensures a maximum of one vLLM pod per GPU node. |
+| `initContainer: nvidia-smi` | Validates GPU readiness before loading the model. |
+| `/dev/shm` memory volume (8Gi) | Prevents CUDA tensor-sharing failures caused by the default 64Mi shared memory allocation. |
+| Hugging Face model cache volume | Prevents repeated downloads of large model artifacts during pod restarts. |
+| `--gpu-memory-utilization 0.90` | Explicitly reserves GPU memory for KV cache management and reduces OOM events. |
+| `VLLM_WORKER_MULTIPROC_METHOD=spawn` | Recommended multiprocessing mode for CUDA workloads on AKS. |
+| `TOKENIZERS_PARALLELISM=false` | Reduces unnecessary tokenizer warnings and log noise. |
+
+---
+
+## NVIDIA GPU Support
+
+### `vllm-config.tf`
+
+This module installs and configures GPU-related Kubernetes components.
+
+### NVIDIA Device Plugin
+
+The NVIDIA Device Plugin is installed through Helm and is required for Kubernetes to expose the:
+
+```text
+nvidia.com/gpu
+```
+
+resource to workloads.
+
+Without this component, GPU scheduling will not function.
+
+---
+
+## Resource Governance
+
+### ResourceQuota
+
+A namespace-level ResourceQuota limits GPU consumption:
+
+| Resource | Limit |
+|-----------|--------|
+| GPUs | 5 |
+
+This matches the maximum replica count configured in KEDA.
+
+---
+
+### LimitRange
+
+A LimitRange is applied to prevent workloads without resource requests from being scheduled onto expensive GPU nodes.
+
+Benefits include:
+
+- Preventing accidental GPU consumption
+- Enforcing resource request best practices
+- Improving cluster utilization
+- Reducing operational costs
+
+---
+
+## GPU Scheduling Strategy
+
+The deployment combines multiple mechanisms to ensure predictable GPU allocation:
+
+### Node Taints
+
+```text
+nvidia.com/gpu=present:NoSchedule
+```
+
+Only workloads with the corresponding toleration can run on GPU nodes.
+
+### Topology Spread Constraints
+
+```text
+maxSkew: 1
+```
+
+Ensures vLLM replicas are evenly distributed across GPU nodes.
+
+### Dedicated CPU Allocation
+
+```text
+cpu_manager_policy = static
+```
+
+Guarantees CPU resources remain available to GPU workloads and prevents contention from neighboring pods.
+
+---
+
+## Expected Benefits
+
+| Area | Benefit |
+|--------|----------|
+| Model Startup | Faster model loading and reduced initialization time |
+| Throughput | Higher concurrent request handling |
+| GPU Utilization | Improved GPU saturation and KV cache efficiency |
+| Stability | Fewer OOM and CUDA IPC failures |
+| Scaling | Safer KEDA scale-up and scale-down behavior |
+| Cost Efficiency | Better utilization of expensive GPU resources |
+
+---
+
+## Deployment Architecture
+
+```text
+                    Internet
+                        │
+                        ▼
+                 Cloudflare Proxy
+                        │
+                        ▼
+                    AKS Ingress
+                        │
+                        ▼
+                 vLLM Deployment
+                        │
+        ┌───────────────┼───────────────┐
+        │                               │
+        ▼                               ▼
+  Hugging Face Cache             /metrics Endpoint
+        │                               │
+        ▼                               ▼
+  Persistent Volume          Prometheus ServiceMonitor
+                                        │
+                                        ▼
+                                    Prometheus
+                                        │
+                                        ▼
+                                      KEDA
+                                        │
+                                        ▼
+                               Horizontal Scaling
+                                 (2 → 5 replicas)
+```

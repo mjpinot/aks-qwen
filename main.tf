@@ -105,7 +105,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 }
 
-# GPU node pool
+# GPU node pool — tuned for vLLM
 resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   name                  = "gpu"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
@@ -116,6 +116,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   enable_auto_scaling   = true
   vnet_subnet_id        = azurerm_subnet.aks.id
   os_disk_size_gb       = 256
+  os_disk_type          = "Ephemeral"   # lower latency I/O vs managed disk
 
   node_labels = {
     "workload" = "llm"
@@ -123,6 +124,29 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   }
 
   node_taints = ["nvidia.com/gpu=present:NoSchedule"]
+
+  # Tune kubelet for large GPU workloads
+  kubelet_config {
+    cpu_manager_policy        = "static"     # dedicate CPUs to vLLM process
+    topology_manager_policy   = "best-effort"
+    container_log_max_size_mb = 50
+    container_log_max_line    = 1000
+  }
+
+  linux_os_config {
+    # vLLM / PyTorch benefits from large transparent huge pages
+    transparent_huge_page_enabled = "always"
+    transparent_huge_page_defrag  = "madvise"
+
+    sysctl_config {
+      # Increase shared memory limits for CUDA IPC
+      kernel_shm_max = 17179869184   # 16Gi
+      kernel_shm_mni = 8192
+      # Increase socket buffers for high-throughput inference
+      net_core_rmem_max = 134217728
+      net_core_wmem_max = 134217728
+    }
+  }
 }
 
 # Cloudflare DNS record pointing to the ingress LB IP
