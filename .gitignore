@@ -1,0 +1,65 @@
+# =========================================================================
+# TERRAFORM LOGS & CACHE
+# =========================================================================
+# Local directory containing provider binaries and modules
+.terraform/
+**/.terraform/
+
+# Crash log files
+crash.log
+crash.*.log
+
+# =========================================================================
+# TERRAFORM STATE FILES (Mandatory to ignore if using remote backend)
+# =========================================================================
+# Local state files contain secrets in plain text; use a remote backend instead
+*.tfstate
+*.tfstate.*
+
+# =========================================================================
+# TERRAFORM VARIABLES & PLANS
+# =========================================================================
+# Ignore variable files which typically house sensitive API tokens and passwords
+*.tfvars
+*.tfvars.json
+
+# Ignore local override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore local CLI plan outputs (may contain sensitive data strings)
+*.tfplan
+
+# =========================================================================
+# KUBERNETES & KUBECTL CONFIGURATIONS
+# =========================================================================
+# Local cluster access tokens and context profiles
+.kube/
+kubeconfig
+kubeconfig_*
+config.secrets
+*.kubeconfig
+
+# Helm charts temporary dependencies and builds
+charts/
+*.tgz
+
+# =========================================================================
+# DEVELOPER ENVIRONMENT & SECURITY
+# =========================================================================
+# Local environment variables containing cloud provider credentials
+.env
+.env.*
+.secrets
+
+# IDE configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
