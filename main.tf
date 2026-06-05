@@ -158,3 +158,4 @@ resource "cloudflare_record" "qwen" {
   ttl     = 1
   proxied = true
 }
+
