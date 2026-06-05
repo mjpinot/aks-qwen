@@ -26,3 +26,9 @@ hostname            = "qwen.yourdomain.com"
 backend_resource_group  = "rg-tfstate"
 backend_storage_account = "stqwentfstate"
 backend_container       = "tfstate"
+
+# Monitoring
+grafana_admin_password = "CHANGE_ME_STRONG_PASSWORD"
+
+# VPA disabled — KEDA drives pod scaling
+vpa_enabled = false

@@ -118,3 +118,125 @@ terraform.tfvars
 .terraform/
 .env
 ```
+
+
+
+# Monitoring & Autoscaling
+
+## Components Added
+
+### Monitoring
+
+| File | Description |
+|--------|-------------|
+| `monitoring.tf` | Deploys `kube-prometheus-stack` using Helm. Vertical Pod Autoscaler (VPA) is explicitly disabled across all components. Includes a `ServiceMonitor` that scrapes the vLLM `/metrics` endpoint. |
+
+### Event-Driven Autoscaling
+
+| File | Description |
+|--------|-------------|
+| `keda.tf` | Deploys the KEDA Operator using Helm. |
+| `k8s/keda-scaledobject.yaml` | Defines a KEDA `ScaledObject` using Prometheus metrics from vLLM. |
+
+---
+
+## Modified Files
+
+| File | Changes |
+|--------|---------|
+| `k8s/qwen-deployment.yaml` | Increased replicas to `2` and added Prometheus scrape annotations. |
+| `variables.tf` | Added `grafana_admin_password` (sensitive) and `vpa_enabled = false`. |
+| `terraform.tfvars` | Added values for Grafana administration and VPA configuration. |
+
+---
+
+# Autoscaling Strategy
+
+The deployment uses **KEDA + Prometheus** to scale the vLLM inference service based on native vLLM metrics.
+
+## Scaling Triggers
+
+| Trigger | Metric | Threshold | Purpose |
+|----------|----------|------------|---------|
+| **Primary** | `vllm:num_requests_running` | Average of **4 requests per pod** | Scale out when pods are actively processing multiple requests. |
+| **Secondary** | `vllm:num_requests_waiting` | **2 queued requests** | Scale out immediately when requests begin accumulating in the queue. |
+
+### Scaling Behavior
+
+| Setting | Value |
+|----------|-------|
+| Minimum Replicas | `2` |
+| Maximum Replicas | `5` |
+| Cooldown Period | `120 seconds` |
+
+> **Note:** GPU nodes can take several minutes to become available. The 120-second cooldown helps prevent unnecessary scale-in and scale-out events.
+
+---
+
+# Deployment Order
+
+## 1. Deploy Infrastructure
+
+This deploys:
+
+- Azure Kubernetes Service (AKS)
+- Prometheus Monitoring Stack
+- Grafana
+- KEDA Operator
+
+```bash
+terraform apply
+```
+
+---
+
+## 2. Deploy the vLLM Application
+
+```bash
+kubectl apply -f k8s/qwen-deployment.yaml
+```
+
+---
+
+## 3. Deploy KEDA Autoscaling
+
+```bash
+kubectl apply -f k8s/keda-scaledobject.yaml
+```
+
+---
+
+# Verification
+
+Verify that KEDA is monitoring the deployment:
+
+```bash
+kubectl get scaledobject -n qwen
+```
+
+Expected output:
+
+```text
+NAME            READY   ACTIVE   FALLBACK   PAUSED   TRIGGERS   AGE
+qwen-scaler     True    False    False      Unknown  2          <age>
+```
+
+---
+
+# Observability
+
+The platform exposes metrics through:
+
+- Prometheus
+- Grafana Dashboards
+- KEDA Metrics Adapter
+- Native vLLM Metrics Endpoint (`/metrics`)
+
+Key vLLM metrics used for scaling:
+
+```text
+vllm:num_requests_running
+vllm:num_requests_waiting
+```
+
+These metrics provide real-time visibility into model utilization, request concurrency, and queue depth.

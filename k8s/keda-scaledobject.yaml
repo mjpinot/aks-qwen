@@ -1,0 +1,53 @@
+---
+# TriggerAuthentication — points KEDA at the in-cluster Prometheus
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: prometheus-triggerauth
+  namespace: qwen
+spec:
+  podIdentity:
+    provider: none   # in-cluster Prometheus, no external auth needed
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: qwen-coder-scaledobject
+  namespace: qwen
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: qwen-coder
+
+  minReplicaCount: 2   # never below 2 pods
+  maxReplicaCount: 5   # never above 5 pods
+
+  pollingInterval: 15          # seconds between metric checks
+  cooldownPeriod:  120         # seconds before scaling down
+
+  triggers:
+    # Scale on running requests queue depth per pod
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+        metricName: vllm_num_requests_running
+        # Threshold: scale up when avg running requests per pod >= 4
+        threshold: "4"
+        query: |
+          sum(vllm:num_requests_running{namespace="qwen"}) /
+          count(kube_pod_info{namespace="qwen", pod=~"qwen-coder-.*"})
+      authenticationRef:
+        name: prometheus-triggerauth
+
+    # Secondary trigger: scale on waiting queue (pending requests)
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+        metricName: vllm_num_requests_waiting
+        # Scale up when any requests are waiting
+        threshold: "2"
+        query: sum(vllm:num_requests_waiting{namespace="qwen"})
+      authenticationRef:
+        name: prometheus-triggerauth

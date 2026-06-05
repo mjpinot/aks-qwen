@@ -10,7 +10,7 @@ metadata:
   name: qwen-coder
   namespace: qwen
 spec:
-  replicas: 1
+  replicas: 2          # initial replica count — KEDA manages min/max
   selector:
     matchLabels:
       app: qwen-coder
@@ -18,6 +18,10 @@ spec:
     metadata:
       labels:
         app: qwen-coder
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       tolerations:
         - key: "nvidia.com/gpu"
@@ -73,6 +77,8 @@ kind: Service
 metadata:
   name: qwen-coder
   namespace: qwen
+  labels:
+    app: qwen-coder
 spec:
   selector:
     app: qwen-coder

@@ -22,3 +22,15 @@ variable "hostname"            { type = string }
 variable "backend_resource_group"  { type = string }
 variable "backend_storage_account" { type = string }
 variable "backend_container"       { type = string }
+
+# Monitoring
+variable "grafana_admin_password" {
+  type      = string
+  sensitive = true
+}
+
+# VPA — disabled; KEDA handles autoscaling
+variable "vpa_enabled" {
+  type    = bool
+  default = false
+}
