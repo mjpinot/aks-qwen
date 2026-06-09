@@ -57,7 +57,7 @@ spec:
           image: vllm/vllm-openai:latest
           args:
             - "--model"
-            - "Qwen/Qwen2.5-Coder-3B-Instruct"
+            - "Qwen/Qwen3.5-2B-Instruct""
             - "--served-model-name"
             - "qwen-coder"
             - "--tensor-parallel-size"
@@ -73,11 +73,11 @@ spec:
           resources:
             limits:
               nvidia.com/gpu: "1"
-              memory: "24Gi"
+              memory: "8Gi"
               cpu: "4"
             requests:
               nvidia.com/gpu: "1"
-              memory: "16Gi"
+              memory: "4Gi"
               cpu: "2"
           volumeMounts:
             # vLLM needs large /dev/shm for CUDA inter-process tensor sharing
