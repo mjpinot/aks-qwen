@@ -1,6 +1,6 @@
 # AKS Qwen — vLLM Inference on Azure
 
-Production-ready Terraform + Kubernetes stack to run **Qwen2.5-Coder-3B-Instruct** via **vLLM** on **Azure Kubernetes Service**, with GPU autoscaling, Prometheus observability, and Cloudflare as the secure edge.
+Production-ready Terraform + Kubernetes stack to run **Qwen3.5-Coder-2B-Instruct** via **vLLM** on **Azure Kubernetes Service**, with GPU autoscaling, Prometheus observability, and Cloudflare as the secure edge.
 
 ---
 

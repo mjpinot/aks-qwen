@@ -57,7 +57,7 @@ spec:
           image: vllm/vllm-openai:latest
           args:
             - "--model"
-            - "Qwen/Qwen3.5-2B-Instruct""
+            - "Qwen/Qwen3.5-2B-Instruct"
             - "--served-model-name"
             - "qwen-coder"
             - "--tensor-parallel-size"
